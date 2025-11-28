@@ -1,0 +1,12 @@
+# Colcon / ROS2 build artifacts
+build/
+install/
+log/
+
+# Python build artifacts
+*.egg-info/
+dist/
+__pycache__/
+
+# VSCode
+.vscode/
