@@ -76,7 +76,7 @@ A Python script is provided to audit message logs and verify message integrity a
 
 Example usage:
 ```bash
-tools/inspect_signed_data.py
+python3 tools/inspect_signed_data.py
 ```
 
 ## Security Analysis & Vulnerabilities
