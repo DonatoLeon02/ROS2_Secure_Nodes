@@ -1,5 +1,5 @@
 <?xml version="1.0"?>
-<package format="2">
+<package format="3">
   <name>secure_node</name>
   <version>0.0.0</version>
   <description>Secure publisher/subscriber nodes</description>
@@ -16,5 +16,6 @@
   <test_depend>ament_lint_common</test_depend>
 
   <export>
+    <build_type>ament_cmake</build_type>
   </export>
 </package>
