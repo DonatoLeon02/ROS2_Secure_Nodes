@@ -76,14 +76,8 @@ A Python script is provided to audit message logs and verify message integrity a
 
 Example usage:
 ```bash
-python3 scripts/verifier.py --log logs/comm_log.txt --pubkey certs/publisher_ed25519.pem
+tools/inspect_signed_data.py
 ```
-Show all options:
-```bash
-python3 scripts/verifier.py --help
-```
-
----
 
 ## Security Analysis & Vulnerabilities
 
