@@ -1,116 +1,132 @@
-# Secure communication — protocol and security overview
+# ROS2 Secure Nodes
 
-This document describes how secure communication is established between the publisher and subscriber nodes: which cryptographic primitives are used, how the shared secret (symmetric key) is generated, and where digital signatures are applied to provide authentication and integrity.
+## Project Overview
 
-## High-level overview
-- Each node holds two keypairs:
-  - An X25519 ECDH keypair used only for key agreement (generating a shared secret).
-  - An Ed25519 signing keypair used to authenticate public keys and to sign message payloads.
-- Nodes perform an authenticated ECDH handshake: each node publishes its ECDH public key plus its Ed25519 public key and an Ed25519 signature that authenticates the ECDH public key.
-- After successful handshake verification, both nodes derive the same shared secret via X25519 ECDH; that secret is turned into an AES‑256 key.
-- The publisher signs the plaintext with Ed25519 and then encrypts the plaintext with AES‑256‑GCM. The subscriber decrypts with AES‑GCM and verifies the Ed25519 signature on the recovered plaintext.
+This project demonstrates secure cryptographic communication between two nodes in ROS2 Humble using modern elliptic curve cryptography and symmetric encryption. Most code is in C++ with a Python-based verifier script.
 
-## Components
-- Publisher node: generates keys, performs authenticated handshake, signs plaintext, encrypts with AES‑GCM, publishes `custom_msgs::msg::SignedData`.
-- Subscriber node: verifies handshake signatures, performs ECDH to derive AES key, decrypts received `SignedData` and verifies message signatures.
-- Handshake messages: carry ECDH public key PEM, Ed25519 public key PEM, and an Ed25519 signature that binds the ECDH public key to the signer.
+**Key Features:**
+- Authenticated handshake
+- Encrypted message exchange
+- Digital signature verification
+- ROS2 launch file for automated startup
+- Service interface for dynamic communication
 
-## Cryptographic primitives
-- ECDH: X25519 (OpenSSL `EVP_PKEY_X25519`) — key agreement producing a 32‑byte shared secret.
-- Signatures: Ed25519 (OpenSSL `EVP_PKEY_ED25519`) — used both to authenticate handshake keys and to sign message payloads.
-- Symmetric encryption: AES‑256‑GCM — provides confidentiality and integrity (authentication tag).
-- Message encoding: binary fields (ciphertext, IV, tag, signatures) are base64-encoded for transport in ROS messages.
+---
 
-## Authenticated handshake (detailed)
-1. Key generation (per node):
-   - Generate X25519 ECDH keypair.
-   - Generate Ed25519 signing keypair.
-2. Handshake message contents:
-   - `ecdh_pubkey`: X25519 public key in PEM.
-   - `ed25519_pubkey`: Ed25519 public key in PEM.
-   - `signature`: base64(Ed25519 signature over the DER bytes of the ECDH public key).
-     - Implementation detail: the ECDH public key is converted to its DER (i2d) representation and those raw bytes are signed with Ed25519 (one‑shot sign).
-3. Receiver processing:
-   - Load peer's Ed25519 public key (PEM).
-   - Verify the handshake `signature` against the peer's ECDH DER bytes using Ed25519.
-   - If verification fails, reject the handshake and do not derive keys.
-   - If verification succeeds, perform X25519 ECDH with the peer's ECDH public key to compute the shared secret.
+## How It Works
 
-## Shared secret → AES key
-- X25519 ECDH produces a 32‑byte shared secret.
-- This implementation uses the shared secret (first 32 bytes) directly as the AES‑256 key.
-- Notes: In production, a KDF (HKDF) with context info and key separation is recommended instead of raw shared‑secret truncation.
+1. **Key Generation:**
+   - Each node generates:
+     - An X25519 ECDH keypair (for authenticated key exchange).
+     - An Ed25519 signing keypair (for authenticating handshake and signing messages).
 
-## Message signing and encryption flow (publisher)
-1. Prepare plaintext payload (in this project: a fixed Lorem ipsum string).
-2. Sign plaintext: compute Ed25519 signature over the plaintext bytes. Store base64(signature) in the message.
-3. Encrypt plaintext: AES‑256‑GCM with a fresh 96‑bit IV per message produces ciphertext + 16‑byte tag.
-   - Store base64(ciphertext) in `SignedData.data`.
-   - Store base64(iv) in `SignedData.iv`.
-   - Store base64(tag) in `SignedData.tag`.
-4. Publish the SignedData message.
+2. **Authenticated Handshake:**
+   - Each node publishes:
+     - X25519 public key (PEM)
+     - Ed25519 public key (PEM)
+     - Ed25519 signature over the ECDH public key
+   - On receiving the handshake, the peer verifies the signature against the Ed25519 public key and, if successful, both compute a shared secret with X25519 ECDH. This secret (32 bytes) becomes the AES-256-GCM key.
 
-Rationale: signing plaintext before encryption gives message authenticity independent of confidentiality; the signature can be verified after decryption to ensure the payload originated from the claimed signer and was not tampered with.
+   > **Note:** While the handshake signature *prevents basic key substitution* by binding the ECDH public key to an identity, it does **not prevent sophisticated man-in-the-middle (MITM) attacks** unless Ed25519 public keys are pre-shared, validated through PKI/certificates, or checked externally. Without such validation, an attacker can present their own keypairs and signatures to each side.
 
-## Reception: decryption and verification (subscriber)
-1. Base64-decode ciphertext, IV, tag, and signature.
-2. Decrypt with AES‑256‑GCM using the derived AES key and provided IV/tag.
-   - If decryption fails (authentication tag mismatch), reject the message.
-3. Verify the Ed25519 signature over the recovered plaintext using the publisher's Ed25519 public key (from the handshake).
-   - If signature verification succeeds, accept the message as authentic and intact.
+3. **Message Exchange:**
+   - **Publisher Node:** Signs the plaintext payload using Ed25519, then encrypts the message with AES-256-GCM using a fresh random IV. The resulting message contains base64-encoded ciphertext + IV + tag + signature.
+   - **Subscriber Node:** Decrypts with AES-256-GCM, verifies the signature over the recovered plaintext with the publisher's Ed25519 public key.
 
-## Where digital signatures fit in
-- Handshake signatures (Ed25519) bind a node's ECDH public key to its identity (Ed25519 public key). This prevents man‑in‑the‑middle substitution of ECDH keys.
-- Message signatures (Ed25519) authenticate the message payload and provide non‑repudiation. They are applied to the plaintext prior to encryption so that the recipient can validate the content after successful decryption.
+4. **Service Interface:**
+   - The package defines a ROS2 service (see source/service definition) for dynamic payload exchanges or control operations. The service provides a way to trigger secure data transmission, key exchanges, or logging from external clients.
 
-## Security considerations / recommendations
-- Current implementation uses the raw X25519 shared secret as the AES key. For stronger key hygiene use a KDF (e.g., HKDF‑SHA256) with explicit salt/info to derive separate keys for encryption and MAC.
-- Never expose AES keys in submission artifacts; signature verification provides authenticity evidence without revealing symmetric keys.
-- Ensure IV uniqueness for AES‑GCM—this implementation uses a random 96‑bit IV per message; monitoring uniqueness is recommended.
-- Keep private keys protected (persist them securely if required across runs).
+---
 
-## Current vulnerabilities and standard mitigations
-- Key substitution / MITM during handshake
-  - Vulnerability: an active attacker that can intercept and modify handshake messages can replace ECDH public keys and, if the receiver trusts the provided signing key, complete a MITM.
-  - Fixes: pre‑share and verify Ed25519 public keys or use a PKI/certificates; alternatively use an authenticated key‑exchange protocol (TLS or Noise). Include key identifiers and sign additional context (nonces/timestamps).
+## Protocols Used
 
-- Replay of handshake or messages
-  - Vulnerability: previously observed handshake or message packets can be replayed to re‑establish sessions or re‑deliver valid messages.
-  - Fixes: include nonces, timestamps, or session IDs in the signed handshake and in message metadata; enforce freshness checks and sequence numbers.
+- **ECDH:** X25519 for secure shared secret creation.
+- **Signatures:** Ed25519 for authenticating handshake and messages.
+- **Encryption:** AES-256-GCM for confidentiality and integrity.
+- **Encoding:** All binary fields base64-encoded for ROS transport.
 
-- Weak key derivation
-  - Vulnerability: using the raw X25519 output directly as an AES key provides no KDF‑based separation.
-  - Fixes: run the ECDH shared secret through HKDF‑SHA256 (with salt/info) to derive distinct keys (encryption, IV derivation, etc.).
+---
 
-- Lack of forward secrecy if long‑lived ECDH keys are used
-  - Vulnerability: compromise of long‑term ECDH private keys exposes past traffic.
-  - Fixes: use ephemeral ECDH keys per session or periodic rekeying; rotate keys and use session lifetimes.
+## Usage
 
-- IV reuse for AES‑GCM
-  - Vulnerability: reusing IVs with the same AES key can break confidentiality/integrity.
-  - Fixes: guarantee unique IVs (counter, deterministic per‑message nonce derivation, or sufficiently large random IVs with collision checks).
+### Build
 
-- Message replay/ordering attacks
-  - Vulnerability: signed messages can be replayed and still verify.
-  - Fixes: include sequence numbers or signed timestamps and reject duplicates or out‑of‑order messages.
+```bash
+git clone https://github.com/DonatoLeon02/ROS2_Secure_Nodes.git
+cd ROS2_Secure_Nodes
+colcon build --symlink-install
+source install/setup.bash
+```
 
-- Logging sensitive material
-  - Vulnerability: logging raw secrets (AES key, shared secret) exposes keys via logs.
-  - Fixes: never log private keys or raw symmetric keys; only log non‑sensitive diagnostics or key fingerprints.
+### Launch Nodes
 
-- Denial of Service through expensive crypto operations
-  - Vulnerability: unauthenticated mass handshake attempts can exhaust CPU via signature verification.
-  - Fixes: rate‑limit handshakes, perform lightweight prechecks before expensive ops, and cap concurrent handshake processing.
+Use the provided launch file:
+```bash
+ros2 launch secure_nodes secure_node.launch.py
+```
+This launches both publisher and subscriber nodes with default parameters.
 
-- Implementation correctness and side channels
-  - Vulnerability: incorrect error handling, non‑constant time comparisons, or weak RNG can leak secrets or introduce bugs.
-  - Fixes: validate all return values, use constant‑time comparisons for sensitive checks, rely on OS CSPRNG and avoid exposing timing differences.
+### Service Usage
 
-Short prioritized recommendations
-1. Use HKDF‑SHA256 on the X25519 shared secret to derive keys.
-2. Pre‑share or otherwise authenticate Ed25519 public keys (or use a PKI) to prevent MITM.
-3. Use ephemeral ECDH keys or session rekeying for forward secrecy.
-4. Add nonces/timestamps and sequence numbers to signed handshake and messages to prevent replay.
-5. Stop logging raw secrets and ensure secure key storage.
+A ROS2 service is defined for secure communication tasks. See the relevant `.srv` file and node source for exact interface and usage. You can call the service from another ROS2 node, CLI, or the verifier script for dynamic control or to trigger secure data transfer.
 
-End of document.
+### Verifier Script
+
+A Python script is provided to audit message logs and verify message integrity and authenticity offline.
+
+Example usage:
+```bash
+python3 scripts/verifier.py --log logs/comm_log.txt --pubkey certs/publisher_ed25519.pem
+```
+Show all options:
+```bash
+python3 scripts/verifier.py --help
+```
+
+---
+
+## Security Analysis & Vulnerabilities
+
+While this implementation uses strong cryptographic primitives, a few important vulnerabilities and mitigations are highlighted below:
+
+- **Man-In-The-Middle Attack Risk:** The handshake authenticates the ECDH public key with Ed25519, but unless Ed25519 public keys are pre-shared or verified outside-band/by PKI, an attacker controlling the network could substitute their own keypairs to both parties. **Ideal mitigation**: pre-share public keys, use a PKI, or use an authenticated key-exchange protocol such as TLS or Noise.
+- **Replay Attacks:** Both handshake and messages are susceptible to replay without nonces, timestamps, or sequence numbers. **Mitigation**: add metadata and enforce freshness/ordering.
+- **Weak Key Derivation:** The AES key is directly the shared secret. **Mitigation**: use a KDF such as HKDF-SHA256.
+- **IV Reuse Risks, Forward Secrecy, Logging Sensitivities, and DoS attacks:** See original README's recommendations for operational precautions.
+
+### Key Recommendations (from implementation notes)
+
+1. Use HKDF-SHA256 for AES key derivation.
+2. Authenticate Ed25519 public keys (pre-share via config, PKI, etc.).
+3. Rotate ECDH keys periodically.
+4. Add replay/ordering metadata to messages.
+5. Secure key storage and stop logging private/symmetric keys.
+6. Harden crypto operation rate limiting.
+
+---
+
+## Future Work
+
+- Integrate HKDF for key derivation.
+- Add PKI authentication for identities.
+- Make ECDH keys ephemeral or enable session rekeying.
+- Add replay/ordering metadata to messages and handshakes.
+- Strengthen service and message interfaces for security.
+- Harden code for side-channel attacks and robust error handling.
+
+---
+
+## Repository Structure
+
+- `src/` — C++ nodes for secure messaging
+- `scripts/` — Python verifier and utilities
+- `launch/secure_node.launch.py` — ROS2 launch file to start nodes
+- `srv/` — Service definition and usage
+- `certs/` — Key and cert helpers
+- `docs/` — Documentation and security notes
+
+---
+
+## License
+
+MIT License (see LICENSE)
