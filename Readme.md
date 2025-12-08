@@ -49,7 +49,54 @@ This project demonstrates secure cryptographic communication between two nodes i
 
 ## Usage
 
-### Build
+### Option 1: Docker Compose (Recommended)
+
+The project includes a Docker Compose setup that runs the publisher and subscriber nodes in separate containers on an isolated network, demonstrating secure inter-container communication.
+
+**Prerequisites:**
+- Docker and Docker Compose installed
+
+**Setup and Run:**
+
+```bash
+# Clone the repository
+git clone https://github.com/DonatoLeon02/ROS2_Secure_Nodes.git
+cd ROS2_Secure_Nodes/.devcontainer
+
+# Build and start both containers
+docker compose up -d
+
+# View logs from both containers
+docker compose logs -f
+
+# View just publisher logs
+docker compose logs -f publisher
+
+# View just subscriber logs
+docker compose logs -f subscriber
+
+# Stop containers
+docker compose down
+
+# Rebuild and restart (after code changes)
+docker compose up -d --build
+```
+
+**What's Running:**
+- `secure_publisher` container: Builds workspace, runs publisher node
+- `secure_subscriber` container: Builds workspace, runs subscriber node
+- Both containers share a bridge network (`devcontainer_ros_secure_network`)
+- Both use ROS_DOMAIN_ID=42 for discovery
+- Source code is mounted from `../src` for easy development
+
+**Docker Configuration:**
+- Base image: `ros:humble-ros-base` (minimal ROS 2 Humble installation)
+- Each container builds independently to avoid build conflicts
+- Network allows secure ROS 2 DDS communication between nodes
+
+### Option 2: Local Build
+
+If you prefer to run nodes directly on your system:
 
 ```bash
 git clone https://github.com/DonatoLeon02/ROS2_Secure_Nodes.git
@@ -58,7 +105,7 @@ colcon build --symlink-install
 source install/setup.bash
 ```
 
-### Launch Nodes
+### Launch Nodes (Local Build)
 
 Use the provided launch file:
 ```bash

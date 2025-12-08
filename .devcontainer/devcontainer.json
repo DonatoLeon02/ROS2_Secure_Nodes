@@ -1,13 +1,17 @@
 {
-  "name": "humble desktop",
-  "dockerFile": "Dockerfile",
-  "runArgs": [
-    "--privileged",
-    "--network=host"
-  ],
-  "workspaceMount": "source=${localWorkspaceFolder},target=/${localWorkspaceFolderBasename},type=bind",
-  "workspaceFolder": "/${localWorkspaceFolderBasename}",
-  "mounts": [
-    "source=${localEnv:HOME}${localEnv:USERPROFILE}/.bash_history,target=/home/vscode/.bash_history,type=bind"
-  ]
+  "name": "ROS2 Secure Nodes Multi-Container",
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "publisher",
+  "workspaceFolder": "/workspace",
+  "shutdownAction": "stopCompose",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-vscode.cpptools",
+        "ms-python.python",
+        "ms-azuretools.vscode-docker"
+      ]
+    }
+  },
+  "postCreateCommand": "echo 'Dev container ready. Use docker-compose logs to see both nodes.'"
 }

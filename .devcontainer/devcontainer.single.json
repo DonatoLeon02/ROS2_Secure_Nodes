@@ -1,0 +1,22 @@
+{
+  "name": "ROS2 Secure Nodes Single Container",
+  "dockerFile": "Dockerfile",
+  "runArgs": [
+    "--privileged",
+    "--network=host"
+  ],
+  "workspaceMount": "source=${localWorkspaceFolder},target=/ROS2_Secure_Nodes,type=bind",
+  "workspaceFolder": "/ROS2_Secure_Nodes",
+  "mounts": [
+    "source=${localEnv:HOME}${localEnv:USERPROFILE}/.bash_history,target=/home/ubuntu/.bash_history,type=bind"
+  ],
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-vscode.cpptools",
+        "ms-python.python"
+      ]
+    }
+  },
+  "postCreateCommand": "cd /ROS2_Secure_Nodes && colcon build --symlink-install && source install/setup.bash"
+}

@@ -1,0 +1,53 @@
+services:
+  publisher:
+    build:
+      context: ..
+      dockerfile: .devcontainer/Dockerfile.publisher
+    container_name: secure_publisher
+    hostname: publisher-node
+    networks:
+      - ros_secure_network
+    environment:
+      - ROS_DOMAIN_ID=42
+      - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+    volumes:
+      - ../src:/workspace/src
+    command: >
+      bash -c "source /opt/ros/humble/setup.bash &&
+               cd /workspace &&
+               colcon build --symlink-install &&
+               source install/setup.bash &&
+               ros2 run secure_node publisher_node"
+    stdin_open: true
+    tty: true
+
+  subscriber:
+    build:
+      context: ..
+      dockerfile: .devcontainer/Dockerfile.subscriber
+    container_name: secure_subscriber
+    hostname: subscriber-node
+    networks:
+      - ros_secure_network
+    environment:
+      - ROS_DOMAIN_ID=42
+      - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+    volumes:
+      - ../src:/workspace/src
+    command: >
+      bash -c "source /opt/ros/humble/setup.bash &&
+               cd /workspace &&
+               colcon build --symlink-install &&
+               source install/setup.bash &&
+               ros2 run secure_node subscriber_node"
+    stdin_open: true
+    tty: true
+    depends_on:
+      - publisher
+
+networks:
+  ros_secure_network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
